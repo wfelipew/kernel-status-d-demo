@@ -5,6 +5,9 @@
 #include <linux/proc_fs.h>
 #include <linux/sysctl.h>
 #include <linux/sched.h>
+#include <linux/device.h>
+#include <linux/cdev.h>
+
 
 
 /*Set file operations handle functions */
@@ -32,14 +35,41 @@ struct file_operations  statusd_fops= {
 };
 
 int major;
+static struct class *myclass = NULL;
+static struct cdev statusd_dev;
 
 static int statusd_init(void){
 	printk(KERN_ALERT "Statusd_demo started \n");
 
-	/*Create character device with dynamic Major number*/
-	major = register_chrdev(0, "statusd_demo", &statusd_fops); 
-	if( major < 0 ){
+	/*Allocate Major and Minor number region for this device*/
+	if(alloc_chrdev_region(&major,0,1,"statusd_demo")  < 0 ){
 		printk(KERN_ALERT "Failed to create chracter device");
+		return -1;
+	}
+	printk("Character device created with  %d major number",major);
+
+	/*Create device class*/
+	myclass = class_create(THIS_MODULE,"statusd");
+	if( myclass == NULL ){
+		printk(KERN_ALERT "Failed to create device class");
+                return -1;
+	}	
+        printk("Device class created with success");
+
+	/*Create device file on /dev/ */
+	if(device_create(myclass,NULL,major,NULL,"statusd_demo") == NULL){
+		printk(KERN_ALERT "Failed to create device file");
+                return -1;
+	}
+        printk("Device file created with success");
+
+	/*Initialize device*/
+	cdev_init(&statusd_dev,&statusd_fops);
+
+	/*Associate device to the major number*/
+	if(cdev_add(&statusd_dev,major,1)==-1){
+
+		printk(KERN_ALERT "Failed to associate device");
 		return -1;
 	}
 
@@ -50,9 +80,19 @@ static int statusd_init(void){
 
 
 static void statusd_exit(void){
-	printk(KERN_INFO "Statusd_demo stopped");
+
+	/*Destroy device file*/
+	device_destroy(myclass, major);
+	cdev_del(&statusd_dev);
+
+	/*Destroy device class*/
+	class_destroy(myclass);
+
 	/*Unregister character device*/
 	unregister_chrdev(major,"statusd_demo");
+	unregister_chrdev_region(major,1);
+	
+	printk(KERN_INFO "Statusd_demo stopped");
 }
 
 
@@ -60,5 +100,5 @@ module_init(statusd_init);
 module_exit(statusd_exit);
 
 MODULE_AUTHOR("William Felipe Welter");
-MODULE_LICENSE("BSD");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Linux kernel module that create a character device to simulate/force uniterruptble sleep state for testing purpose");
