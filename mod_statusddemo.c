@@ -7,23 +7,37 @@
 #include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/cdev.h>
+#include <linux/wait.h>
+
+static DECLARE_WAIT_QUEUE_HEAD(queue);
+int major;
+static struct class *myclass = NULL;
+static struct cdev statusd_dev;
+static int lock=0;
 
 
 
 /*Set file operations handle functions */
 int statusd_open(struct inode *inode, struct file *fileptr){
-	return 1;
+	return 0;
 }
 
 int statusd_release(struct inode *inode, struct file *fileptr){
-	return 1;
+	return 0;
 }
 
 ssize_t statusd_read(struct file *fileptr, char *buf, size_t count, loff_t *f_pos){
-	return 1;
+	/*Put the reader process in uninterruptable state AKA D Status*/
+	lock=0;
+	wait_event(queue,lock!=0);
+	return 0;
 }
 
 ssize_t statusd_write( struct file *fileptr, const char *buf, size_t count, loff_t *f_pos){
+	/*Wakeup the reader process*/
+	lock=1;
+	wake_up(&queue);
+	/*Emulate a fake write*/
 	return 1;
 }
 
@@ -34,9 +48,6 @@ struct file_operations  statusd_fops= {
     .release = statusd_release
 };
 
-int major;
-static struct class *myclass = NULL;
-static struct cdev statusd_dev;
 
 static int statusd_init(void){
 	printk(KERN_ALERT "Statusd_demo started \n");
@@ -73,7 +84,6 @@ static int statusd_init(void){
 		return -1;
 	}
 
-	/*Allocate memory*/
 	
 	return 0;
 }
